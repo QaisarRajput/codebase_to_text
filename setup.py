@@ -10,6 +10,10 @@ setup(
             "codebase-to-text = codebase_to_text.codebase_to_text:main",
         ]
     },
+    
+    install_requires=[
+          'python-docx'
+      ],
     author="Qaisar Tanvir",
     author_email="qaisartanvir.dev@gmail.com",
     description="A Python package to convert codebase to text",
