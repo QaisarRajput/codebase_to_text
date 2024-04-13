@@ -1,3 +1,2 @@
 python-docx
 gitpython
-tempfile
