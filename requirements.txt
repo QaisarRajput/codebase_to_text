@@ -1,1 +1,3 @@
 python-docx
+gitpython
+tempfile
