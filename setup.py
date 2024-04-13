@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="codebase-to-text",
-    version="1.0.2",
+    version="1.0.3",
     packages=find_packages(),
     install_requires=["python-docx"],
     entry_points={
@@ -14,7 +14,7 @@ setup(
     author_email="qaisartanvir.dev@gmail.com",
     description="A Python package to convert codebase to text",
     long_description=open("README.md").read(),
-    download_url="https://github.com/QaisarRajput/codebase_to_text/archive/refs/tags/1.0.2.tar.gz",
+    download_url="https://github.com/QaisarRajput/codebase_to_text/archive/refs/tags/1.0.3.tar.gz",
     long_description_content_type="text/markdown",
     keywords = ["codebase, code conversion, text conversion, folder structure, file contents, text extraction, document conversion, Python package, GitHub repository, command-line tool, code analysis, file parsing, code documentation, formatting preservation, readability"],
     license="MIT",
