@@ -17,6 +17,10 @@ class CodebaseToText:
     def _parse_folder(self, folder_path):
         tree = ""
         for root, dirs, files in os.walk(folder_path):
+            # Exclude hidden directories if exclude_hidden is True
+            if self.exclude_hidden:
+                dirs[:] = [d for d in dirs if not self._is_hidden_file(os.path.join(root, d))]
+
             level = root.replace(folder_path, '').count(os.sep)
             indent = ' ' * 4 * (level)
             tree += '{}{}/\n'.format(indent, os.path.basename(root))
@@ -128,14 +132,14 @@ def main():
     parser.add_argument("--input", help="Input path (folder or GitHub URL)", required=True)
     parser.add_argument("--output", help="Output file path", required=True)
     parser.add_argument("--output_type", help="Output file type (txt or docx)", required=True)
-    parser.add_argument("--exclude_hidden", help="Exclude hidden files", required=True)
-    parser.add_argument("--verbose", help="Show useful information", required=False)
+    parser.add_argument("--exclude_hidden", help="Exclude hidden files and folders", action="store_true")
+    parser.add_argument("--verbose", help="Show useful information", action="store_true")
     args = parser.parse_args()
 
     code_to_text = CodebaseToText(input_path=args.input,
                                 output_path=args.output,
                                 output_type=args.output_type,
-                                verbose = args.verbose,
+                                verbose=args.verbose,
                                 exclude_hidden=args.exclude_hidden)
     code_to_text.get_file()
 
