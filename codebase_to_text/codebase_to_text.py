@@ -93,7 +93,7 @@ class CodebaseToText:
         return final_text
 
 
-    def get_file(self):
+    def make_output(self):
         text = self.get_text()
         if self.output_type == "txt":
             with open(self.output_path, "w") as file:
@@ -103,7 +103,7 @@ class CodebaseToText:
             doc.add_paragraph(text)
             doc.save(self.output_path)
         else:
-            raise ValueError("Invalid output type. Supported types: txt, docx")
+            print(text)
         
     #### Github ####
 
@@ -130,8 +130,8 @@ class CodebaseToText:
 def main():
     parser = argparse.ArgumentParser(description="Generate text from codebase.")
     parser.add_argument("--input", help="Input path (folder or GitHub URL)", required=True)
-    parser.add_argument("--output", help="Output file path", required=True)
-    parser.add_argument("--output_type", help="Output file type (txt or docx)", required=True)
+    parser.add_argument("--output", help="Output file path", required=False)
+    parser.add_argument("--output_type", help="Output file type (txt or docx)", required=False)
     parser.add_argument("--exclude_hidden", help="Exclude hidden files and folders", action="store_true")
     parser.add_argument("--verbose", help="Show useful information", action="store_true")
     args = parser.parse_args()
@@ -141,7 +141,7 @@ def main():
                                 output_type=args.output_type,
                                 verbose=args.verbose,
                                 exclude_hidden=args.exclude_hidden)
-    code_to_text.get_file()
+    code_to_text.make_output()
 
     # Remove temporary folder if it was used
     #if code_to_text.is_temp_folder_used():
