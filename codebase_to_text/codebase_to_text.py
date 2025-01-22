@@ -6,13 +6,13 @@ from pathlib import Path
 from docx import Document
 import tempfile
 class CodebaseToText:
-    def __init__(self, input_path, output_path, output_type, verbose, exclude_hidden):
+    def __init__(self, input_path, output_path, output_type, verbose, exclude_hidden, exclude_types=None):
         self.input_path = input_path
         self.output_path = output_path
         self.output_type = output_type
         self.verbose = verbose
         self.exclude_hidden = exclude_hidden
-        self.temp_folder_path = None
+        self.exclude_types = exclude_types.split(",") if exclude_types else []
 
     def _parse_folder(self, folder_path):
         tree = ""
@@ -50,6 +50,12 @@ class CodebaseToText:
         content = ""
         for root, _, files in os.walk(path):
             for file in files:
+                file_extension = os.path.splitext(file)[1]
+                if file_extension in self.exclude_types:
+                    if self.verbose:
+                        print(f"Excluding file {file} with extension {file_extension}")
+                    continue
+
                 file_path = os.path.join(root, file)
                 if self.exclude_hidden and self._is_hidden_file(os.path.abspath(file_path)):
                     if self.verbose:
@@ -61,7 +67,7 @@ class CodebaseToText:
                         print(f"Processing: {file_path}")
                     file_content = self._get_file_contents(file_path)
                     content += f"\n\n{file_path}\n"
-                    content += f"File type: {os.path.splitext(file_path)[1]}\n"
+                    content += f"File type: {file_extension}\n"
                     content += f"{file_content}"
                     # Add section headers and delimiters after each file
                     content += f"\n\n{'-' * 50}\nFile End\n{'-' * 50}\n"
@@ -134,13 +140,18 @@ def main():
     parser.add_argument("--output_type", help="Output file type (txt or docx)", required=True)
     parser.add_argument("--exclude_hidden", help="Exclude hidden files and folders", action="store_true")
     parser.add_argument("--verbose", help="Show useful information", action="store_true")
+    parser.add_argument("--exclude_type", help="Comma-separated list of file extensions to exclude, e.g., '.xlsx,.pdf'", default="")
+
     args = parser.parse_args()
 
-    code_to_text = CodebaseToText(input_path=args.input,
-                                output_path=args.output,
-                                output_type=args.output_type,
-                                verbose=args.verbose,
-                                exclude_hidden=args.exclude_hidden)
+    code_to_text = CodebaseToText(
+        input_path=args.input,
+        output_path=args.output,
+        output_type=args.output_type,
+        verbose=args.verbose,
+        exclude_hidden=args.exclude_hidden,
+        exclude_types=args.exclude_type
+    )
     code_to_text.get_file()
 
     # Remove temporary folder if it was used

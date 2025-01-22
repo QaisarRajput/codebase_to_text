@@ -21,6 +21,19 @@ class TestCodebaseToText(unittest.TestCase):
         text = code_to_text.get_text()
         expected_text = f"Folder structure:\n{self.test_folder_path}/\n    test_file1.txt\n    test_file2.txt\n\nFile Contents:\n\n{self.test_folder_path}/test_file1.txt\nFile type: Text (.txt)\nTest file 1 content\n\n{self.test_folder_path}/test_file2.txt\nFile type: Text (.txt)\nTest file 2 content"
         self.assertEqual(text, expected_text)
+    
+    def test_exclude_types(self):
+        code_to_text = CodebaseToText(
+            input_path=self.test_folder_path,
+            output_path="output.txt",
+            output_type="txt",
+            verbose=False,
+            exclude_hidden=False,
+            exclude_types=".txt"
+        )
+        text = code_to_text.get_text()
+        self.assertNotIn("test_file1.txt", text)
+        self.assertNotIn("test_file2.txt", text)
 
     def tearDown(self):
         # Clean up temporary folder
