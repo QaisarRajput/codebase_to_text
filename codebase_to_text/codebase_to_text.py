@@ -5,6 +5,7 @@ import shutil
 from pathlib import Path
 from docx import Document
 import tempfile
+
 class CodebaseToText:
     def __init__(self, input_path, output_path, output_type, verbose, exclude_hidden):
         self.input_path = input_path
@@ -17,9 +18,12 @@ class CodebaseToText:
     def _parse_folder(self, folder_path):
         tree = ""
         for root, dirs, files in os.walk(folder_path):
-            # Exclude hidden directories if exclude_hidden is True
-            if self.exclude_hidden:
-                dirs[:] = [d for d in dirs if not self._is_hidden_file(os.path.join(root, d))]
+            # Exclude 'venv' directories and hidden directories if exclude_hidden is True
+            dirs[:] = [
+                d for d in dirs
+                if d != 'venv' and 
+                (not self.exclude_hidden or not self._is_hidden_file(os.path.join(root, d)))
+            ]
 
             level = root.replace(folder_path, '').count(os.sep)
             indent = ' ' * 4 * (level)
@@ -34,21 +38,27 @@ class CodebaseToText:
         return tree
 
     def _get_file_contents(self, file_path):
-        with open(file_path, 'r') as file:
+        # Open the file with utf-8 encoding and replace errors so that emojis are handled gracefully
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
             return file.read()
         
     def _is_hidden_file(self, file_path):
         components = os.path.normpath(file_path).split(os.sep)
-        # print(f"componetns {components}")
         for c in components:
             if c.startswith((".","__")):
                 return True
         return False
 
-
     def _process_files(self, path):
         content = ""
-        for root, _, files in os.walk(path):
+        for root, dirs, files in os.walk(path):
+            # Exclude 'venv' directories and hidden directories if exclude_hidden is True
+            dirs[:] = [
+                d for d in dirs
+                if d != 'venv' and 
+                (not self.exclude_hidden or not self._is_hidden_file(os.path.join(root, d)))
+            ]
+
             for file in files:
                 file_path = os.path.join(root, file)
                 if self.exclude_hidden and self._is_hidden_file(os.path.abspath(file_path)):
@@ -65,8 +75,8 @@ class CodebaseToText:
                     content += f"{file_content}"
                     # Add section headers and delimiters after each file
                     content += f"\n\n{'-' * 50}\nFile End\n{'-' * 50}\n"
-                except:
-                    print(f"Couldn't process {file_path}")
+                except Exception as e:
+                    print(f"Couldn't process {file_path}: {e}")
         return content
 
     def get_text(self):
@@ -92,11 +102,10 @@ class CodebaseToText:
         
         return final_text
 
-
     def get_file(self):
         text = self.get_text()
         if self.output_type == "txt":
-            with open(self.output_path, "w") as file:
+            with open(self.output_path, "w", encoding="utf-8") as file:
                 file.write(text)
         elif self.output_type == "docx":
             doc = Document()
@@ -126,7 +135,6 @@ class CodebaseToText:
         if self.temp_folder_path:
             shutil.rmtree(self.temp_folder_path)
 
-
 def main():
     parser = argparse.ArgumentParser(description="Generate text from codebase.")
     parser.add_argument("--input", help="Input path (folder or GitHub URL)", required=True)
@@ -144,8 +152,8 @@ def main():
     code_to_text.get_file()
 
     # Remove temporary folder if it was used
-    #if code_to_text.is_temp_folder_used():
-    #    code_to_text.clean_up_temp_folder()
+    if code_to_text.is_temp_folder_used():
+        code_to_text.clean_up_temp_folder()
 
 if __name__ == "__main__":
     main()
