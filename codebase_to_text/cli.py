@@ -29,7 +29,7 @@ class CodebaseToText:
             indent = ' ' * 4 * level
             tree += f"{indent}{os.path.basename(root)}/\n"
             subindent = ' ' * 4 * (level + 1)
-            for f in files: 
+            for f in files:
                 tree += f"{subindent}{f}\n"
 
         if self.verbose:
@@ -82,11 +82,20 @@ class CodebaseToText:
                         print(f"Ignoring hidden file {file_path}")
                     continue
 
+                # Check if the file is a PDF. If so, add an entry and skip content.
+                if file_path.lower().endswith('.pdf'):
+                    if self.verbose:
+                        print(f"Skipping PDF file content for: {file_path}")
+                    content += f"\n\n{file_path}\n"
+                    content += "File type: .pdf\n"
+                    content += "PDF file. Content not included.\n"
+                    content += f"\n\n{'-' * 50}\nFile End\n{'-' * 50}\n"
+                    continue
+
                 # Check if the file is binary.
                 if self._is_binary_file(file_path):
                     if self.verbose:
                         print(f"Skipping binary file content for: {file_path}")
-                    # Add an entry indicating that this binary file exists, but content is not included.
                     content += f"\n\n{file_path}\n"
                     content += f"File type: {os.path.splitext(file_path)[1]}\n"
                     content += "Binary file. Content not included.\n"
@@ -125,7 +134,10 @@ class CodebaseToText:
         delimiter = "-" * 50
         
         # Format the final text.
-        final_text = f"{folder_structure_header}\n{delimiter}\n{folder_structure}\n\n{file_contents_header}\n{delimiter}\n{file_contents}"
+        final_text = (
+            f"{folder_structure_header}\n{delimiter}\n{folder_structure}\n\n"
+            f"{file_contents_header}\n{delimiter}\n{file_contents}"
+        )
         
         return final_text
 
@@ -141,7 +153,7 @@ class CodebaseToText:
         else:
             raise ValueError("Invalid output type. Supported types: txt, docx")
         
-    #### Github-related Methods ####
+    #### GitHub-related Methods ####
 
     def _clone_github_repo(self):
         try:
