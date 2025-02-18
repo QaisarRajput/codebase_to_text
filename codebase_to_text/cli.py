@@ -18,7 +18,7 @@ class CodebaseToText:
     def _parse_folder(self, folder_path):
         tree = ""
         for root, dirs, files in os.walk(folder_path):
-            # Exclude 'venv' directories and hidden directories if exclude_hidden is True
+            # Exclude 'venv' directories and hidden directories if exclude_hidden is True.
             dirs[:] = [
                 d for d in dirs
                 if d != 'venv' and 
@@ -26,33 +26,49 @@ class CodebaseToText:
             ]
 
             level = root.replace(folder_path, '').count(os.sep)
-            indent = ' ' * 4 * (level)
-            tree += '{}{}/\n'.format(indent, os.path.basename(root))
+            indent = ' ' * 4 * level
+            tree += f"{indent}{os.path.basename(root)}/\n"
             subindent = ' ' * 4 * (level + 1)
             for f in files: 
-                tree += '{}{}\n'.format(subindent, f)
+                tree += f"{subindent}{f}\n"
 
         if self.verbose:
-            print(f"The file tree to be processed:\n {tree}")
+            print(f"The file tree to be processed:\n{tree}")
 
         return tree
 
+    def _is_binary_file(self, file_path):
+        """
+        Check if a file is binary by reading a small chunk.
+        If null bytes are found, consider the file as binary.
+        """
+        try:
+            with open(file_path, 'rb') as file:
+                chunk = file.read(1024)
+                if b'\0' in chunk:
+                    return True
+        except Exception as e:
+            if self.verbose:
+                print(f"Error reading file {file_path} in binary mode: {e}")
+            return True  # If we can't read the file, assume it's binary to be safe.
+        return False
+
     def _get_file_contents(self, file_path):
-        # Open the file with utf-8 encoding and replace errors so that emojis are handled gracefully
+        # Open the file with UTF-8 encoding and replace errors to handle emojis and other characters gracefully.
         with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
             return file.read()
         
     def _is_hidden_file(self, file_path):
         components = os.path.normpath(file_path).split(os.sep)
         for c in components:
-            if c.startswith((".","__")):
+            if c.startswith((".", "__")):
                 return True
         return False
 
     def _process_files(self, path):
         content = ""
         for root, dirs, files in os.walk(path):
-            # Exclude 'venv' directories and hidden directories if exclude_hidden is True
+            # Exclude 'venv' directories and hidden directories if exclude_hidden is True.
             dirs[:] = [
                 d for d in dirs
                 if d != 'venv' and 
@@ -66,6 +82,17 @@ class CodebaseToText:
                         print(f"Ignoring hidden file {file_path}")
                     continue
 
+                # Check if the file is binary.
+                if self._is_binary_file(file_path):
+                    if self.verbose:
+                        print(f"Skipping binary file content for: {file_path}")
+                    # Add an entry indicating that this binary file exists, but content is not included.
+                    content += f"\n\n{file_path}\n"
+                    content += f"File type: {os.path.splitext(file_path)[1]}\n"
+                    content += "Binary file. Content not included.\n"
+                    content += f"\n\n{'-' * 50}\nFile End\n{'-' * 50}\n"
+                    continue
+
                 try:
                     if self.verbose:
                         print(f"Processing: {file_path}")
@@ -73,7 +100,7 @@ class CodebaseToText:
                     content += f"\n\n{file_path}\n"
                     content += f"File type: {os.path.splitext(file_path)[1]}\n"
                     content += f"{file_content}"
-                    # Add section headers and delimiters after each file
+                    # Add section headers and delimiters after each file.
                     content += f"\n\n{'-' * 50}\nFile End\n{'-' * 50}\n"
                 except Exception as e:
                     print(f"Couldn't process {file_path}: {e}")
@@ -90,14 +117,14 @@ class CodebaseToText:
             folder_structure = self._parse_folder(self.input_path)
             file_contents = self._process_files(self.input_path)
         
-        # Section headers
+        # Section headers.
         folder_structure_header = "Folder Structure"
         file_contents_header = "File Contents"
         
-        # Delimiters
+        # Delimiters.
         delimiter = "-" * 50
         
-        # Format the final text
+        # Format the final text.
         final_text = f"{folder_structure_header}\n{delimiter}\n{folder_structure}\n\n{file_contents_header}\n{delimiter}\n{file_contents}"
         
         return final_text
@@ -114,12 +141,12 @@ class CodebaseToText:
         else:
             raise ValueError("Invalid output type. Supported types: txt, docx")
         
-    #### Github ####
+    #### Github-related Methods ####
 
     def _clone_github_repo(self):
         try:
             self.temp_folder_path = tempfile.mkdtemp(prefix="github_repo_")
-            repo = git.Repo.clone_from(self.input_path, self.temp_folder_path)
+            git.Repo.clone_from(self.input_path, self.temp_folder_path)
             if self.verbose:
                 print("GitHub repository cloned successfully.")
         except Exception as e:
@@ -153,7 +180,7 @@ def main():
     )
     code_to_text.get_file()
 
-    # Remove temporary folder if it was used
+    # Remove temporary folder if it was used.
     if code_to_text.is_temp_folder_used():
         code_to_text.clean_up_temp_folder()
 
