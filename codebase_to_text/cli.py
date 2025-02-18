@@ -144,11 +144,13 @@ def main():
     parser.add_argument("--verbose", help="Show useful information", action="store_true")
     args = parser.parse_args()
 
-    code_to_text = CodebaseToText(input_path=args.input,
-                                output_path=args.output,
-                                output_type=args.output_type,
-                                verbose=args.verbose,
-                                exclude_hidden=args.exclude_hidden)
+    code_to_text = CodebaseToText(
+        input_path=args.input,
+        output_path=args.output,
+        output_type=args.output_type,
+        verbose=args.verbose,
+        exclude_hidden=args.exclude_hidden
+    )
     code_to_text.get_file()
 
     # Remove temporary folder if it was used
