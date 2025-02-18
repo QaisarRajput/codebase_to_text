@@ -11,13 +11,15 @@ Converts a codebase (folder structure with files) into a single text file or a M
 - Retains folder structure in a tree-like format.
 - Extracts file contents and metadata.
 - Supports multiple file types including text files (.txt) and Microsoft Word documents (.docx).
+- Excludes Venv folder
 
 ## Installation
 
-You can install the package using pip:
+Git clone the repo
+Go inside the project folder
 
 ```bash
-pip install codebase-to-text
+pip install -e .
 ```
 
 ## Usage
