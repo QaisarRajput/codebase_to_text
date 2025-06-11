@@ -205,3 +205,7 @@ The generated output includes:
 1. **Folder Structure**: Tree-like representation of the directory structure
 2. **File Contents**: Full content of each file with metadata
 3. **Clear Separators**: Distinct sections for easy navigation
+
+## ✒️ License
+
+License This project is licensed under the MIT License - see the LICENSE file for details.
