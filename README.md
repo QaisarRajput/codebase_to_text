@@ -22,11 +22,13 @@ pip install codebase-to-text
 ### Command Line Interface (CLI)
 
 #### Basic Usage
+
 ```bash
 codebase-to-text --input "path_or_github_url" --output "output_path" --output_type "txt"
 ```
 
 #### Advanced Usage with Exclusions
+
 ```bash
 # Exclude specific patterns
 codebase-to-text --input "./my_project" --output "output.txt" --output_type "txt" --exclude "*.log,temp/,**/__pycache__/**"
@@ -91,6 +93,7 @@ The tool supports powerful exclusion patterns to filter out unwanted files and d
 ### Default Exclusions
 
 The tool automatically excludes common development files:
+
 - `.git/`, `__pycache__/`, `*.pyc`, `*.pyo`
 - `node_modules/`, `.venv/`, `venv/`, `env/`
 - `*.log`, `*.tmp`, `.DS_Store`
@@ -100,7 +103,7 @@ The tool automatically excludes common development files:
 
 Create a `.exclude` file in your project root:
 
-```
+```bash
 # .exclude file - Patterns for files/folders to exclude
 
 # Version control
@@ -140,6 +143,7 @@ data/large_files/
 ## 💡 Examples
 
 ### Convert Local Project
+
 ```bash
 # Basic conversion
 codebase-to-text --input "~/projects/my_app" --output "my_app_code.txt" --output_type "txt"
@@ -149,6 +153,7 @@ codebase-to-text --input "~/projects/my_app" --output "my_app_code.txt" --output
 ```
 
 ### Convert GitHub Repository
+
 ```bash
 # Public repository
 codebase-to-text --input "https://github.com/username/repo" --output "repo_analysis.docx" --output_type "docx"
@@ -158,6 +163,7 @@ codebase-to-text --input "https://github.com/username/repo" --output "repo_clean
 ```
 
 ### Python Integration
+
 ```python
 # Analyze a codebase programmatically
 from codebase_to_text import CodebaseToText
