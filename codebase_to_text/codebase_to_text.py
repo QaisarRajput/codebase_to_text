@@ -150,52 +150,71 @@ class CodebaseToText:
         excluded_dirs = set()
 
         for root, dirs, files in os.walk(folder_path):
-            # Check if current directory should be excluded
-            if self._should_exclude(root, folder_path):
-                if self.verbose:
-                    print(f"Excluding directory: {root}")
-                self.excluded_files_count += 1
-                excluded_dirs.add(root)
+            if self._handle_excluded_directory(root, folder_path, excluded_dirs):
                 continue
 
-            # Skip if we're inside an excluded directory
             if self._skip_excluded_dir(root, excluded_dirs):
                 continue
             
-            # Filter out excluded directories from dirs list
-            original_dirs = dirs[:]
-            dirs[:] = []
-            for d in original_dirs:
-                dir_path = os.path.join(root, d)
-                if not self._should_exclude(dir_path, folder_path):
-                    dirs.append(d)
-                elif self.verbose:
-                    print(f"Excluding directory from tree: {dir_path}")
-                    self.excluded_files_count += 1
-            
-            # Exclude hidden directories if exclude_hidden is True (separate from patterns)
-            if self.exclude_hidden:
-                dirs[:] = [d for d in dirs if not self._is_hidden_file(os.path.join(root, d))]
+            self._filter_excluded_directories(dirs, root, folder_path)
+            tree += self._generate_directory_entry(root, folder_path)
+            tree += self._generate_file_entries(files, root, folder_path)
 
-            level = root.replace(folder_path, '').count(os.sep)
-            indent = ' ' * 4 * level
-            tree += '{}{}/\n'.format(indent, os.path.basename(root))
-            subindent = ' ' * 4 * (level + 1)
-            
-            # Filter files based on exclusion patterns
-            for f in files:
-                file_path = os.path.join(root, f)
-                if not self._should_exclude(file_path, folder_path):
-                    tree += '{}{}\n'.format(subindent, f)
-                elif self.verbose:
-                    print(f"Excluding file from tree: {file_path}")
-                    self.excluded_files_count += 1
+        self._log_tree_results(tree)
+        return tree
 
+    def _handle_excluded_directory(self, root, folder_path, excluded_dirs):
+        """Handle directory exclusion and return True if directory should be skipped"""
+        if self._should_exclude(root, folder_path):
+            if self.verbose:
+                print(f"Excluding directory: {root}")
+            self.excluded_files_count += 1
+            excluded_dirs.add(root)
+            return True
+        return False
+
+    def _filter_excluded_directories(self, dirs, root, folder_path):
+        """Filter out excluded directories from the dirs list"""
+        original_dirs = dirs[:]
+        dirs[:] = []
+        for d in original_dirs:
+            dir_path = os.path.join(root, d)
+            if not self._should_exclude(dir_path, folder_path):
+                dirs.append(d)
+            elif self.verbose:
+                print(f"Excluding directory from tree: {dir_path}")
+                self.excluded_files_count += 1
+        
+        # Apply hidden file exclusion
+        if self.exclude_hidden:
+            dirs[:] = [d for d in dirs if not self._is_hidden_file(os.path.join(root, d))]
+
+    def _generate_directory_entry(self, root, folder_path):
+        """Generate tree entry for a directory"""
+        level = root.replace(folder_path, '').count(os.sep)
+        indent = ' ' * 4 * level
+        return '{}{}/\n'.format(indent, os.path.basename(root))
+
+    def _generate_file_entries(self, files, root, folder_path):
+        """Generate tree entries for files in a directory"""
+        tree = ""
+        level = root.replace(folder_path, '').count(os.sep)
+        subindent = ' ' * 4 * (level + 1)
+        
+        for f in files:
+            file_path = os.path.join(root, f)
+            if not self._should_exclude(file_path, folder_path):
+                tree += '{}{}\n'.format(subindent, f)
+            elif self.verbose:
+                print(f"Excluding file from tree: {file_path}")
+                self.excluded_files_count += 1
+        return tree
+
+    def _log_tree_results(self, tree):
+        """Log tree generation results if verbose mode is enabled"""
         if self.verbose:
             print(f"The file tree to be processed:\n{tree}")
             print(f"Total excluded items: {self.excluded_files_count}")
-
-        return tree
 
     def _get_file_contents(self, file_path):
         """Read file contents with better error handling"""
@@ -236,57 +255,81 @@ class CodebaseToText:
         excluded_dirs = set()
         
         for root, dirs, files in os.walk(path):
-            # Check if current directory should be excluded
-            if self._should_exclude(root, path):
-                if self.verbose:
-                    print(f"Skipping excluded directory: {root}")
-                excluded_dirs.add(root)
+            if self._handle_directory_exclusion(root, path, excluded_dirs):
                 continue
 
-            # Skip if we're inside an excluded directory
             if self._skip_excluded_dir(root, excluded_dirs):
                 continue
             
-            # Modify dirs list to skip excluded directories
-            original_dirs = dirs[:]
-            dirs[:] = []
-            for d in original_dirs:
-                dir_path = os.path.join(root, d)
-                if not self._should_exclude(dir_path, path):
-                    dirs.append(d)
+            self._filter_directories_for_processing(dirs, root, path)
             
             for file in files:
-                file_path = os.path.join(root, file)
-                
-                # Check exclusion patterns
-                if self._should_exclude(file_path, path):
-                    if self.verbose:
-                        print(f"Skipping excluded file: {file_path}")
-                    continue
-
-                try:
-                    if self.verbose:
-                        print(f"Processing: {file_path}")
-                    
-                    file_content = self._get_file_contents(file_path)
-                    rel_path = os.path.relpath(file_path, path)
-                    content += f"\n\n{rel_path}\n"
-                    content += f"File type: {os.path.splitext(file_path)[1] or 'no extension'}\n"
-                    content += f"{file_content}"
-                    content += f"\n\n{'-' * 50}\nFile End\n{'-' * 50}\n"
+                file_result = self._process_single_file(file, root, path)
+                if file_result:
+                    content += file_result
                     processed_count += 1
-                    
-                except Exception as e:
-                    if self.verbose:
-                        print(f"Error processing {file_path}: {e}")
-                    content += f"\n\n{rel_path}\n"
-                    content += f"File type: {os.path.splitext(file_path)[1] or 'no extension'}\n"
-                    content += f"[Error: Could not process file - {str(e)}]"
-                    content += f"\n\n{'-' * 50}\nFile End\n{'-' * 50}\n"
         
         if self.verbose:
             print(f"Processed {processed_count} files")
         
+        return content
+
+    def _handle_directory_exclusion(self, root, path, excluded_dirs):
+        """Handle directory exclusion for file processing"""
+        if self._should_exclude(root, path):
+            if self.verbose:
+                print(f"Skipping excluded directory: {root}")
+            excluded_dirs.add(root)
+            return True
+        return False
+
+    def _filter_directories_for_processing(self, dirs, root, path):
+        """Filter directories to avoid processing excluded ones"""
+        original_dirs = dirs[:]
+        dirs[:] = []
+        for d in original_dirs:
+            dir_path = os.path.join(root, d)
+            if not self._should_exclude(dir_path, path):
+                dirs.append(d)
+
+    def _process_single_file(self, file, root, path):
+        """Process a single file and return its content or None if excluded"""
+        file_path = os.path.join(root, file)
+        
+        if self._should_exclude(file_path, path):
+            if self.verbose:
+                print(f"Skipping excluded file: {file_path}")
+            return None
+
+        if self.verbose:
+            print(f"Processing: {file_path}")
+        
+        try:
+            return self._format_file_content(file_path, path)
+        except Exception as e:
+            return self._format_file_error(file_path, path, e)
+
+    def _format_file_content(self, file_path, path):
+        """Format successful file content for output"""
+        file_content = self._get_file_contents(file_path)
+        rel_path = os.path.relpath(file_path, path)
+        
+        content = f"\n\n{rel_path}\n"
+        content += f"File type: {os.path.splitext(file_path)[1] or 'no extension'}\n"
+        content += f"{file_content}"
+        content += f"\n\n{'-' * 50}\nFile End\n{'-' * 50}\n"
+        return content
+
+    def _format_file_error(self, file_path, path, error):
+        """Format file processing error for output"""
+        if self.verbose:
+            print(f"Error processing {file_path}: {error}")
+        
+        rel_path = os.path.relpath(file_path, path)
+        content = f"\n\n{rel_path}\n"
+        content += f"File type: {os.path.splitext(file_path)[1] or 'no extension'}\n"
+        content += f"[Error: Could not process file - {str(error)}]"
+        content += f"\n\n{'-' * 50}\nFile End\n{'-' * 50}\n"
         return content
 
     def get_text(self):
