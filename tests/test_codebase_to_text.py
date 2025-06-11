@@ -341,7 +341,7 @@ class TestCodebaseToText(unittest.TestCase):
         )
         
         # Generate text to trigger exclusion counting
-        text = code_to_text.get_text()
+        code_to_text.get_text()
         
         # Should have excluded some files
         self.assertGreater(code_to_text.excluded_files_count, 0)

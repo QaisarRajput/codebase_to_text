@@ -3,10 +3,8 @@ import argparse
 import git
 import shutil
 import fnmatch
-from pathlib import Path
 from docx import Document
 import tempfile
-from typing import List, Set
 
 
 class CodebaseToText:
@@ -26,23 +24,32 @@ class CodebaseToText:
         self._load_exclusion_patterns(exclude)
 
     def _load_exclusion_patterns(self, exclude_args):
-        """Load exclusion patterns from CLI args and .exclude file"""
-        # Add CLI exclusion patterns
-        if exclude_args:
-            for pattern in exclude_args:
-                # Split by comma and strip whitespace
-                for p in pattern.split(','):
-                    p = p.strip()
-                    if p:
-                        self.exclude_patterns.add(p)
-        
-        # Add default exclusion patterns for common files/folders
+        """Load exclusion patterns from CLI args, defaults and .exclude file."""
+        self._add_cli_patterns(exclude_args)
+        self._add_default_patterns()
+        self._add_file_patterns()
+
+        if self.verbose and self.exclude_patterns:
+            print(f"Active exclusion patterns: {sorted(self.exclude_patterns)}")
+
+    def _add_cli_patterns(self, exclude_args):
+        """Add patterns provided via command line."""
+        if not exclude_args:
+            return
+        for pattern in exclude_args:
+            for p in pattern.split(','):
+                p = p.strip()
+                if p:
+                    self.exclude_patterns.add(p)
+
+    def _add_default_patterns(self):
+        """Add default exclusion patterns for common files/folders."""
         default_excludes = {
-            '.git/', '.git/**', 
-            '__pycache__/', '**/__pycache__/**', 
+            '.git/', '.git/**',
+            '__pycache__/', '**/__pycache__/**',
             '*.pyc', '*.pyo', '*.pyd',
             '.venv/', 'venv/', 'env/',
-            'node_modules/', 
+            'node_modules/',
             '.DS_Store',
             '*.log', '*.tmp',
             '.pytest_cache/',
@@ -50,27 +57,27 @@ class CodebaseToText:
             'build/', 'dist/',
             '*.egg-info/',
         }
-        
-        # Load from .exclude file if it exists
-        exclude_file_path = os.path.join(self.input_path if not self.is_github_repo() else '.', '.exclude')
-        if os.path.exists(exclude_file_path):
-            try:
-                with open(exclude_file_path, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith('#'):
-                            self.exclude_patterns.add(line)
-                if self.verbose:
-                    print(f"Loaded exclusion patterns from {exclude_file_path}")
-            except Exception as e:
-                if self.verbose:
-                    print(f"Warning: Could not read .exclude file: {e}")
-        
-        # Add default patterns (can be overridden by user patterns)
         self.exclude_patterns.update(default_excludes)
-        
-        if self.verbose and self.exclude_patterns:
-            print(f"Active exclusion patterns: {sorted(self.exclude_patterns)}")
+
+    def _add_file_patterns(self):
+        """Load patterns from a .exclude file if present."""
+        exclude_file_path = os.path.join(
+            self.input_path if not self.is_github_repo() else '.',
+            '.exclude'
+        )
+        if not os.path.exists(exclude_file_path):
+            return
+        try:
+            with open(exclude_file_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        self.exclude_patterns.add(line)
+            if self.verbose:
+                print(f"Loaded exclusion patterns from {exclude_file_path}")
+        except Exception as e:
+            if self.verbose:
+                print(f"Warning: Could not read .exclude file: {e}")
 
     def _normalize_path(self, file_path, base_path):
         """Normalize path for pattern matching"""
@@ -98,43 +105,50 @@ class CodebaseToText:
         
         # Check against all exclusion patterns
         for pattern in self.exclude_patterns:
-            # Direct filename match
-            if fnmatch.fnmatch(filename, pattern):
+            if self._pattern_matches(pattern, normalized_path, filename):
                 return True
-            
-            # Full path match
-            if fnmatch.fnmatch(normalized_path, pattern):
+
+        return False
+
+    def _pattern_matches(self, pattern, normalized_path, filename):
+        """Return True if the pattern matches the given file."""
+        if fnmatch.fnmatch(filename, pattern):
+            return True
+        if fnmatch.fnmatch(normalized_path, pattern):
+            return True
+        if pattern.endswith('/'):
+            if self._dir_pattern_match(pattern.rstrip('/'), normalized_path):
                 return True
-            
-            # Directory pattern matching
-            if pattern.endswith('/'):
-                dir_pattern = pattern.rstrip('/')
-                path_parts = normalized_path.split('/')
-                for part in path_parts:
-                    if fnmatch.fnmatch(part, dir_pattern):
-                        return True
-            
-            # Recursive pattern matching with **
-            if '**' in pattern:
-                # Replace ** with * for fnmatch
-                recursive_pattern = pattern.replace('**/', '').replace('**', '*')
-                if fnmatch.fnmatch(normalized_path, recursive_pattern):
-                    return True
-                
-                # Check if any part of the path matches
-                path_parts = normalized_path.split('/')
-                for i in range(len(path_parts)):
-                    partial_path = '/'.join(path_parts[i:])
-                    if fnmatch.fnmatch(partial_path, recursive_pattern):
-                        return True
+        if '**' in pattern:
+            if self._recursive_pattern_match(pattern, normalized_path):
+                return True
         
+        return False
+
+    def _dir_pattern_match(self, dir_pattern, normalized_path):
+        """Check directory style pattern."""
+        for part in normalized_path.split('/'):
+            if fnmatch.fnmatch(part, dir_pattern):
+                return True
+        return False
+
+    def _recursive_pattern_match(self, pattern, normalized_path):
+        """Handle patterns that include ** for recursion."""
+        recursive_pattern = pattern.replace('**/', '').replace('**', '*')
+        if fnmatch.fnmatch(normalized_path, recursive_pattern):
+            return True
+        path_parts = normalized_path.split('/')
+        for i in range(len(path_parts)):
+            partial_path = '/'.join(path_parts[i:])
+            if fnmatch.fnmatch(partial_path, recursive_pattern):
+                return True
         return False
 
     def _parse_folder(self, folder_path):
         """Parse folder structure, respecting exclusion patterns"""
         tree = ""
         excluded_dirs = set()
-        
+
         for root, dirs, files in os.walk(folder_path):
             # Check if current directory should be excluded
             if self._should_exclude(root, folder_path):
@@ -143,15 +157,9 @@ class CodebaseToText:
                 self.excluded_files_count += 1
                 excluded_dirs.add(root)
                 continue
-            
+
             # Skip if we're inside an excluded directory
-            skip_current = False
-            for excluded_dir in excluded_dirs:
-                if root.startswith(excluded_dir):
-                    skip_current = True
-                    break
-            
-            if skip_current:
+            if self._skip_excluded_dir(root, excluded_dirs):
                 continue
             
             # Filter out excluded directories from dirs list
@@ -214,6 +222,13 @@ class CodebaseToText:
                 return True
         return False
 
+    def _skip_excluded_dir(self, root, excluded_dirs):
+        """Return True if the directory is inside an excluded path."""
+        for excluded_dir in excluded_dirs:
+            if root.startswith(excluded_dir):
+                return True
+        return False
+
     def _process_files(self, path):
         """Process files, respecting exclusion patterns"""
         content = ""
@@ -227,15 +242,9 @@ class CodebaseToText:
                     print(f"Skipping excluded directory: {root}")
                 excluded_dirs.add(root)
                 continue
-            
+
             # Skip if we're inside an excluded directory
-            skip_current = False
-            for excluded_dir in excluded_dirs:
-                if root.startswith(excluded_dir):
-                    skip_current = True
-                    break
-            
-            if skip_current:
+            if self._skip_excluded_dir(root, excluded_dirs):
                 continue
             
             # Modify dirs list to skip excluded directories
@@ -328,7 +337,7 @@ class CodebaseToText:
         """Clone GitHub repository to temporary directory"""
         try:
             self.temp_folder_path = tempfile.mkdtemp(prefix="github_repo_")
-            repo = git.Repo.clone_from(self.input_path, self.temp_folder_path)
+            git.Repo.clone_from(self.input_path, self.temp_folder_path)
             if self.verbose:
                 print(f"GitHub repository cloned to: {self.temp_folder_path}")
         except Exception as e:
