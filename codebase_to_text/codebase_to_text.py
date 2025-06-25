@@ -1,4 +1,4 @@
-import os
+﻿import os
 import argparse
 import git
 import shutil
@@ -34,7 +34,7 @@ class CodebaseToText:
         return tree
 
     def _get_file_contents(self, file_path):
-        with open(file_path, 'r') as file:
+        with open(file_path, 'r', encoding='utf-8') as file:
             return file.read()
         
     def _is_hidden_file(self, file_path):
@@ -47,6 +47,7 @@ class CodebaseToText:
 
 
     def _process_files(self, path):
+        import traceback
         content = ""
         for root, _, files in os.walk(path):
             for file in files:
@@ -63,10 +64,11 @@ class CodebaseToText:
                     content += f"\n\n{file_path}\n"
                     content += f"File type: {os.path.splitext(file_path)[1]}\n"
                     content += f"{file_content}"
-                    # Add section headers and delimiters after each file
                     content += f"\n\n{'-' * 50}\nFile End\n{'-' * 50}\n"
-                except:
-                    print(f"Couldn't process {file_path}")
+                except Exception as e:
+                    print(f"Couldn't process {file_path}: {e}")
+                    if self.verbose:
+                        traceback.print_exc()
         return content
 
     def get_text(self):
@@ -96,7 +98,7 @@ class CodebaseToText:
     def get_file(self):
         text = self.get_text()
         if self.output_type == "txt":
-            with open(self.output_path, "w") as file:
+            with open(self.output_path, "w", encoding="utf-8") as file:
                 file.write(text)
         elif self.output_type == "docx":
             doc = Document()
