@@ -404,6 +404,34 @@ class TestPatternMatching(unittest.TestCase):
             shutil.rmtree(self.test_folder_path)
 
 
+class TestDocxImage(unittest.TestCase):
+    def test_docx_with_image(self):
+        import tempfile
+        import os
+        import base64
+        from docx import Document
+        # Create a temporary directory
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Write a dummy 1x1 PNG image
+            img_path = os.path.join(temp_dir, "dummy.png")
+            png_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAAC0lEQVQIW2NgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII="
+            with open(img_path, "wb") as f:
+                f.write(base64.b64decode(png_data))
+            
+            # Create a new DOCX document and add a picture
+            doc = Document()
+            doc.add_paragraph("Testing DOCX image inclusion.")
+            doc.add_picture(img_path)
+            
+            # Save the document
+            doc_path = os.path.join(temp_dir, "test.docx")
+            doc.save(doc_path)
+            
+            # Reload the document and assert that it contains an inline image
+            new_doc = Document(doc_path)
+            self.assertGreater(len(new_doc.inline_shapes), 0, "Document should contain at least one inline image.")
+
+
 if __name__ == "__main__":
     # Run specific test class or all tests
     unittest.main(verbosity=2)

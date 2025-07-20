@@ -15,6 +15,7 @@ import sys
 
 import git
 from docx import Document
+from docx.shared import Inches
 
 
 class CodebaseToText:
@@ -51,6 +52,9 @@ class CodebaseToText:
         # Initialize exclusion patterns
         self.exclude_patterns = set()
         self.excluded_files_count = 0
+
+        # Add supported image extensions
+        self.image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff'}
 
         # Load exclusion patterns from various sources
         self._load_exclusion_patterns(exclude)
@@ -331,6 +335,10 @@ class CodebaseToText:
             if not self._should_exclude(dir_path, path):
                 dirs.append(d)
 
+    def _is_image_file(self, file_path):
+        """Check if the file is an image based on extension"""
+        return os.path.splitext(file_path)[1].lower() in self.image_extensions
+
     def _process_single_file(self, file, root, path):
         """Process a single file and return its content or None if excluded"""
         file_path = os.path.join(root, file)
@@ -344,6 +352,9 @@ class CodebaseToText:
             print(f"Processing: {file_path}")
 
         try:
+            if self.output_type == 'docx' and self._is_image_file(file_path):
+                # For images in docx mode, return special marker with evaluated path
+                return f"\n\n(IMAGE_MARKER){os.path.abspath(file_path)}(/IMAGE_MARKER)\n"
             return self._format_file_content(file_path, path)
         except (OSError, UnicodeDecodeError) as e:
             return self._format_file_error(file_path, path, e)
@@ -406,7 +417,35 @@ class CodebaseToText:
                 file.write(text)
         elif self.output_type == "docx":
             doc = Document()
-            doc.add_paragraph(text)
+            # Split text into segments based on image markers
+            segments = text.split('(IMAGE_MARKER)')
+            
+            # Add first text segment
+            if segments[0].strip():
+                doc.add_paragraph(segments[0])
+            
+            # Process remaining segments
+            for segment in segments[1:]:
+                if '(/IMAGE_MARKER)' in segment:
+                    # Extract image path and remaining text
+                    img_path, text_content = segment.split('(/IMAGE_MARKER)', 1)
+                    img_path = str(img_path.strip())  # Remove any whitespace
+                    if self.verbose:
+                        print(f"Loading image from: {img_path}")
+                    if not os.path.exists(img_path):
+                        if self.verbose:
+                            print(f"Image file not found at: {img_path}")
+                        doc.add_paragraph(f"[Missing image: {img_path}]")
+                    else:
+                        try:
+                            doc.add_picture(img_path, width=Inches(6))
+                        except Exception as e:
+                            if self.verbose:
+                                print(f"Error adding image {img_path}: {e}")
+                            doc.add_paragraph(f"[Error: Could not add image - {str(e)}]")
+                    
+                    if text_content.strip():
+                        doc.add_paragraph(text_content)
             doc.save(self.output_path)
         else:
             raise ValueError("Invalid output type. Supported types: txt, docx")
@@ -461,7 +500,7 @@ Examples:
     parser.add_argument("--input", help="Input path (folder or GitHub URL)", required=True)
     parser.add_argument("--output", help="Output file path", required=True)
     parser.add_argument("--output_type", help="Output file type (txt or docx)",
-                       choices=["txt", "docx"], required=True)
+                       choices=["txt", "docx"],default="txt")
     parser.add_argument("--exclude", help="Exclude patterns (can be used multiple times)",
                        action="append", default=[])
     parser.add_argument("--exclude_hidden", help="Exclude hidden files and folders",
@@ -500,3 +539,4 @@ Examples:
 
 if __name__ == "__main__":
     sys.exit(main())
+
