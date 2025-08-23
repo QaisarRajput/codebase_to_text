@@ -246,6 +246,14 @@ class CodebaseToText:
         subindent = ' ' * 4 * (level + 1)
         for f in files:
             file_path = os.path.join(root, f)
+            
+            # SECURITY: Validate file path before including in tree
+            if not self._validate_file_path(file_path, folder_path):
+                if self.verbose:
+                    print(f"SECURITY: Excluding file from tree due to path validation: {file_path}")
+                    self.excluded_files_count += 1
+                continue
+                
             if not self._should_exclude(file_path, folder_path):
                 tree += f'{subindent}{f}\n'
             elif self.verbose:
@@ -342,6 +350,12 @@ class CodebaseToText:
     def _process_single_file(self, file, root, path):
         """Process a single file and return its content or None if excluded"""
         file_path = os.path.join(root, file)
+        
+        # SECURITY: Validate file path to prevent directory traversal attacks
+        if not self._validate_file_path(file_path, path):
+            if self.verbose:
+                print(f"SECURITY: Skipping file due to path validation failure: {file_path}")
+            return None
 
         if self._should_exclude(file_path, path):
             if self.verbose:
@@ -482,6 +496,48 @@ class CodebaseToText:
             if self.verbose:
                 print(f"Cleaned up temporary folder: {self.temp_folder_path}")
 
+    def _validate_file_path(self, file_path, base_path):
+        """
+        Validate file path to prevent directory traversal attacks.
+    
+        This method ensures that the file path, when resolved, stays within
+        the specified base directory. It handles symlinks, relative paths,
+        and other potential security issues.
+    
+        Args:
+            file_path (str): The file path to validate
+            base_path (str): The base directory that files should stay within
+            
+        Returns:
+            bool: True if path is safe and within base directory, False otherwise
+            
+        Security Note:
+            This function prevents directory traversal attacks by:
+            - Resolving all symlinks with os.path.realpath
+            - Converting to absolute paths
+            - Using os.path.commonpath to verify containment
+        """
+        try:
+            # Resolve any symlinks and get absolute paths
+            abs_file = os.path.abspath(os.path.realpath(file_path))
+            abs_base = os.path.abspath(os.path.realpath(base_path))
+            
+            # Check if the file path is within the base directory
+            # os.path.commonpath returns the longest common sub-path
+            common_path = os.path.commonpath([abs_file, abs_base])
+            is_safe = common_path == abs_base
+            
+            if not is_safe and self.verbose:
+                print(f"SECURITY: Rejected potentially unsafe path: {file_path}")
+                print(f"  Resolved to: {abs_file}")
+                print(f"  Base directory: {abs_base}")
+                
+            return is_safe
+        except (ValueError, OSError) as e:
+            # If there's any error in path resolution, reject for safety
+            if self.verbose:
+                print(f"SECURITY: Path validation error for {file_path}: {e}")
+            return False
 
 def main():
     """Main CLI entry point"""
