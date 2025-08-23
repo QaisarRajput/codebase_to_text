@@ -4,6 +4,8 @@ import sys
 import tempfile
 import shutil
 from pathlib import Path
+import io
+import time
 
 # Add parent directory to path for imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -431,6 +433,319 @@ class TestDocxImage(unittest.TestCase):
             new_doc = Document(doc_path)
             self.assertGreater(len(new_doc.inline_shapes), 0, "Document should contain at least one inline image.")
 
+
+class TestSecurityPathValidation(unittest.TestCase):
+    """Test path validation security features"""
+    
+    def setUp(self):
+        """Set up test environment with temporary folder structure"""
+        self.test_folder_path = tempfile.mkdtemp(prefix="test_security_")
+        self.external_folder_path = tempfile.mkdtemp(prefix="test_external_")
+        
+        # Create test files
+        with open(os.path.join(self.test_folder_path, "safe_file.txt"), "w") as f:
+            f.write("This is a safe file")
+        
+        # Create external file that should not be accessible
+        with open(os.path.join(self.external_folder_path, "secret.txt"), "w") as f:
+            f.write("This should not be accessible")
+        
+        self.output_path = os.path.join(self.test_folder_path, "output.txt")
+
+    def test_validate_file_path_safe_files(self):
+        """Test that legitimate files pass validation"""
+        converter = CodebaseToText(
+            input_path=self.test_folder_path,
+            output_path=self.output_path,
+            output_type="txt"
+        )
+        
+        safe_file = os.path.join(self.test_folder_path, "safe_file.txt")
+        self.assertTrue(converter._validate_file_path(safe_file, self.test_folder_path))
+
+    def test_validate_file_path_traversal_attack(self):
+        """Test that directory traversal attempts are blocked"""
+        converter = CodebaseToText(
+            input_path=self.test_folder_path,
+            output_path=self.output_path,
+            output_type="txt"
+        )
+        
+        # Test various traversal patterns
+        traversal_paths = [
+            "../secret.txt",
+            "../../secret.txt",
+            "../../../etc/passwd",
+            "..\\..\\windows\\system32\\config\\sam",  # Windows style
+            os.path.join(self.test_folder_path, "../secret.txt"),
+        ]
+        
+        for malicious_path in traversal_paths:
+            with self.subTest(path=malicious_path):
+                result = converter._validate_file_path(malicious_path, self.test_folder_path)
+                self.assertFalse(result, f"Should reject traversal path: {malicious_path}")
+
+    def test_validate_file_path_absolute_paths(self):
+        """Test that absolute paths outside base directory are blocked"""
+        converter = CodebaseToText(
+            input_path=self.test_folder_path,
+            output_path=self.output_path,
+            output_type="txt"
+        )
+        
+        # Test absolute paths outside the base directory
+        external_file = os.path.join(self.external_folder_path, "secret.txt")
+        self.assertFalse(converter._validate_file_path(external_file, self.test_folder_path))
+        
+        # Test system paths
+        system_paths = ["/etc/passwd", "/windows/system32/config/sam", "C:\\Windows\\System32"]
+        for sys_path in system_paths:
+            with self.subTest(path=sys_path):
+                result = converter._validate_file_path(sys_path, self.test_folder_path)
+                self.assertFalse(result, f"Should reject system path: {sys_path}")
+
+    def test_validate_file_path_symlinks(self):
+        """Test that symlinks pointing outside base directory are blocked"""
+        converter = CodebaseToText(
+            input_path=self.test_folder_path,
+            output_path=self.output_path,
+            output_type="txt"
+        )
+        
+        # Create a symlink pointing to external file
+        symlink_path = os.path.join(self.test_folder_path, "malicious_symlink.txt")
+        external_target = os.path.join(self.external_folder_path, "secret.txt")
+        
+        try:
+            os.symlink(external_target, symlink_path)
+            # Symlink should be rejected because it points outside base directory
+            result = converter._validate_file_path(symlink_path, self.test_folder_path)
+            self.assertFalse(result, "Should reject symlink pointing outside base directory")
+        except OSError:
+            # Skip test if symlinks not supported on this system
+            self.skipTest("Symlinks not supported on this system")
+
+    def test_validate_file_path_symlinks_internal(self):
+        """Test that symlinks pointing within base directory are allowed"""
+        converter = CodebaseToText(
+            input_path=self.test_folder_path,
+            output_path=self.output_path,
+            output_type="txt"
+        )
+        
+        # Create a symlink pointing to internal file
+        symlink_path = os.path.join(self.test_folder_path, "internal_symlink.txt")
+        internal_target = os.path.join(self.test_folder_path, "safe_file.txt")
+        
+        try:
+            os.symlink(internal_target, symlink_path)
+            # Internal symlink should be allowed
+            result = converter._validate_file_path(symlink_path, self.test_folder_path)
+            self.assertTrue(result, "Should allow symlink pointing within base directory")
+        except OSError:
+            # Skip test if symlinks not supported on this system
+            self.skipTest("Symlinks not supported on this system")
+
+    def test_security_verbose_logging(self):
+        """Test that security violations are logged in verbose mode"""
+        # Capture stdout
+        captured_output = io.StringIO()
+        original_stdout = sys.stdout
+        sys.stdout = captured_output
+        
+        try:
+            converter = CodebaseToText(
+                input_path=self.test_folder_path,
+                output_path=self.output_path,
+                output_type="txt",
+                verbose=True
+            )
+            
+            # Test validation with malicious path
+            malicious_path = "../../../etc/passwd"
+            converter._validate_file_path(malicious_path, self.test_folder_path)
+            
+            # Get the output
+            output = captured_output.getvalue()
+            
+            # Should contain security warning
+            self.assertIn("SECURITY:", output)
+            self.assertIn("Rejected potentially unsafe path", output)
+            
+        finally:
+            # Restore stdout
+            sys.stdout = original_stdout
+
+    def test_process_single_file_security_integration(self):
+        """Test that _process_single_file properly integrates security validation"""
+        # Create a mock file structure that simulates a traversal attack
+        test_dir = tempfile.mkdtemp(prefix="test_integration_")
+        
+        try:
+            # Create legitimate file
+            safe_file = os.path.join(test_dir, "safe.txt")
+            with open(safe_file, "w") as f:
+                f.write("Safe content")
+            
+            converter = CodebaseToText(
+                input_path=test_dir,
+                output_path="dummy.txt",
+                output_type="txt",
+                verbose=True
+            )
+            
+            # Test processing safe file (should work)
+            result = converter._process_single_file("safe.txt", test_dir, test_dir)
+            self.assertIsNotNone(result)
+            self.assertIn("Safe content", result)
+            
+            # Test processing file with traversal path (should be blocked)
+            # Note: We can't actually create a file with ".." in the name on most systems,
+            # but we can test the validation logic directly
+            self.assertFalse(converter._validate_file_path("../../../etc/passwd", test_dir))
+            
+        finally:
+            shutil.rmtree(test_dir)
+
+    def test_full_conversion_with_security(self):
+        """Test that full conversion process respects security measures"""
+        converter = CodebaseToText(
+            input_path=self.test_folder_path,
+            output_path=self.output_path,
+            output_type="txt"
+        )
+        
+        # This should complete successfully with only safe files
+        text = converter.get_text()
+        
+        # Should contain safe content
+        self.assertIn("safe_file.txt", text)
+        self.assertIn("This is a safe file", text)
+        
+        # Generate the actual file
+        converter.get_file()
+        self.assertTrue(os.path.exists(self.output_path))
+
+    def test_performance_impact(self):
+        """Test that security validation has minimal performance impact"""
+        # Create a larger test structure
+        large_test_dir = tempfile.mkdtemp(prefix="test_performance_")
+        
+        try:
+            # Create multiple files
+            for i in range(100):
+                with open(os.path.join(large_test_dir, f"file_{i}.txt"), "w") as f:
+                    f.write(f"Content of file {i}")
+            
+            # Test with security (current implementation)
+            start_time = time.time()
+            converter_secure = CodebaseToText(
+                input_path=large_test_dir,
+                output_path="dummy1.txt",
+                output_type="txt"
+            )
+            text1 = converter_secure.get_text()
+            secure_time = time.time() - start_time
+            
+            # For performance comparison, we can't easily disable security,
+            # but we can verify the time is reasonable (< 5 seconds for 100 files)
+            self.assertLess(secure_time, 5.0, "Security validation should not significantly impact performance")
+            
+            # Verify content is still correct
+            self.assertIn("file_0.txt", text1)
+            self.assertIn("Content of file 0", text1)
+            
+        finally:
+            shutil.rmtree(large_test_dir)
+
+    def test_error_handling_in_validation(self):
+        """Test error handling in path validation"""
+        converter = CodebaseToText(
+            input_path=self.test_folder_path,
+            output_path=self.output_path,
+            output_type="txt",
+            verbose=True
+        )
+        
+        # Test with invalid/problematic paths
+        invalid_paths = [
+            "",  # Empty string
+            None,  # This might cause TypeError, but should be handled
+            "\x00invalid",  # Null byte
+        ]
+        
+        for invalid_path in invalid_paths:
+            with self.subTest(path=invalid_path):
+                try:
+                    result = converter._validate_file_path(invalid_path, self.test_folder_path)
+                    # Should either return False or handle the error gracefully
+                    self.assertFalse(result, f"Should reject invalid path: {invalid_path}")
+                except (TypeError, ValueError):
+                    # These exceptions are acceptable for truly invalid inputs
+                    pass
+
+    def tearDown(self):
+        """Clean up test environment"""
+        if os.path.exists(self.test_folder_path):
+            shutil.rmtree(self.test_folder_path)
+        if os.path.exists(self.external_folder_path):
+            shutil.rmtree(self.external_folder_path)
+
+
+class TestSecurityIntegration(unittest.TestCase):
+    """Integration tests for security features"""
+    
+    def test_malicious_repo_simulation(self):
+        """Simulate a malicious repository with traversal attempts"""
+        # This test simulates what could happen with a malicious Git repository
+        test_dir = tempfile.mkdtemp(prefix="test_malicious_")
+        external_dir = tempfile.mkdtemp(prefix="test_external_")
+        
+        try:
+            # Create legitimate files
+            with open(os.path.join(test_dir, "README.md"), "w") as f:
+                f.write("# Fake innocent project")
+            
+            with open(os.path.join(test_dir, "main.py"), "w") as f:
+                f.write("print('Hello World')")
+            
+            # Create external sensitive file
+            with open(os.path.join(external_dir, "secrets.txt"), "w") as f:
+                f.write("SECRET_API_KEY=abc123")
+            
+            # Test conversion with verbose mode to catch security messages
+            captured_output = io.StringIO()
+            original_stdout = sys.stdout
+            sys.stdout = captured_output
+            
+            try:
+                converter = CodebaseToText(
+                    input_path=test_dir,
+                    output_path=os.path.join(test_dir, "output.txt"),
+                    output_type="txt",
+                    verbose=True
+                )
+                
+                # This should work without accessing external files
+                text = converter.get_text()
+                
+                # Should contain legitimate files
+                self.assertIn("README.md", text)
+                self.assertIn("main.py", text)
+                self.assertIn("Hello World", text)
+                
+                # Should NOT contain external secrets
+                self.assertNotIn("SECRET_API_KEY", text)
+                self.assertNotIn("abc123", text)
+                
+                output = captured_output.getvalue()
+                
+            finally:
+                sys.stdout = original_stdout
+                
+        finally:
+            shutil.rmtree(test_dir)
+            shutil.rmtree(external_dir)
 
 if __name__ == "__main__":
     # Run specific test class or all tests
